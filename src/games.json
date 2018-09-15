@@ -1,0 +1,57 @@
+{
+    "games": {
+        "ds3allboss": {
+            "0": ["Gundyr", 0],
+            "1": ["Vordt", 0],
+            "2": ["Cursed Greatwood", 0],
+            "3": ["Crystal Sage", 0],
+            "4": ["Abyss Watchers", 0],
+            "5": ["Deep Deacons", 0],
+            "6": ["Lord Wolnir", 0],
+            "7": ["Old Demon King", 0],
+            "8": ["Pontiff Sulyvahn", 0],
+            "9": ["Yhorm", 0],
+            "10": ["Aldrich", 0],
+            "11": ["Dancer", 0],
+            "12": ["Dragonslayer", 0],
+            "13": ["Oceiros", 0],
+            "14": ["Champ. Gundyr", 0],
+            "15": ["Lothric", 0],
+            "16": ["Ancient Wyvern", 0],
+            "17": ["Nameless King", 0],
+            "18": ["Soul of Cinder", 0],
+            "19": ["Friede", 0],
+            "20": ["Gravetender", 0],
+            "21": ["Demon Prince", 0],
+            "22": ["Halflight", 0],
+            "23": ["Midir", 0],
+            "24": ["Gael", 0]
+            
+        },
+        "ds2": {
+            "0": ["Last Giant", 0],
+            "1": ["Pursuer", 0],
+            "2": ["Dragonrider", 0],
+            "3": ["Flexile Sentry", 0],
+            "4": ["Ruin Sentinels", 0],
+            "5": ["Lost Sinner", 0],
+            "6": ["Skeleton Lords", 0],
+            "7": ["Covetous Demon", 0],
+            "8": ["Mytha", 0],
+            "9": ["Smelter Demon", 0],
+            "10": ["Old Iron King", 0],
+            "11": ["Najka", 0],
+            "12": ["Magus & Congregation", 0],
+            "13": ["Freja", 0],
+            "14": ["Rotten", 0],
+            "15": ["Dragonriders", 0],
+            "16": ["Glass Knight", 0],
+            "17": ["Demon of Song", 0],
+            "18": ["Velstadt", 0],
+            "19": ["Guardian Dragon", 0],
+            "20": ["Giant Lord", 0],
+            "21": ["Defender & Watcher", 0],
+            "22": ["Nashandra", 0]
+        }
+    }
+}
