@@ -1,6 +1,12 @@
 extern crate serde_json;
 #[macro_use] extern crate serde_derive;
 extern crate rusqlite;
+#[macro_use] extern crate tera;
+
+#[macro_use] extern crate prettytable;
+use prettytable::Table;
+use prettytable::row::Row;
+use prettytable::cell::Cell;
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -8,7 +14,6 @@ use std::io::{stdin, stdout, Write};
 use std::fs::File;
 use std::path::Path;
 use rusqlite::Connection;
-use std::mem;
 
 #[derive(Deserialize)]
 struct Game {
@@ -29,21 +34,24 @@ struct Hits {
 
 // Display GameSplit object in a nice manner
 fn display_highlighted_split(game_object: &BTreeMap<i32, (String, i32)>, highlight: &i32, name: &String, hits_vec: &Vec<u8>) {
+    let mut table = Table::new();
     // Display game name as a header of sorts
     println!("{}\n_________________________________________\n", name);
     // Column names
-    println!("BOSS\t   HITS\t   PB");
+    table.add_row(row!["BOSS", "HITS", "PB"]);
     let mut vec_index_counter = 0;
     for (index, (boss, hits)) in game_object {
         // Display boss name, current hits, and pb 
-        print!("{} | {} | {}", boss, hits, hits_vec[vec_index_counter]);
-        // Highlight the split that is selected
         if index == highlight {
-            print!(" <-----");
+            table.add_row(row![boss, hits, hits_vec[vec_index_counter], " <-----"]);
+            //print!(" );
+        } else {
+            table.add_row(row![boss, hits, hits_vec[vec_index_counter]]);
         }
-        println!("\n------------------------------");
+
         vec_index_counter = vec_index_counter + 1;
     }
+    table.printstd();
 }
 
 // This fn returns how many elements are in a games' boss_splits BTreeMap
@@ -66,13 +74,14 @@ fn load_json() -> Game {
 }
 
 fn update_pb(game_object: &BTreeMap<i32, (String, i32)>, game_name: &String) {
-    let db_path = "src/hits.db";
+    
+    let db_path = "db/hits.db";
     if Path::new(db_path).exists() == false {
         println!("Can't find DB, creating new one...");
     }
     // Set up how the SQL statement looks, use {} where value needs to be replaced
     let sql_default = "UPDATE {} Set PBHits = ?1 where Boss = ?2";
-    
+
     // Replace {} in default string with game name, which is the name of the table.
     let sql_replace = sql_default.replace("{}", &game_name); 
 
@@ -84,7 +93,7 @@ fn update_pb(game_object: &BTreeMap<i32, (String, i32)>, game_name: &String) {
 }
 
 fn insert_run_into_db(game_object: &BTreeMap<i32, (String, i32)>, game_name: &String) {
-    let db_path = "src/hits.db";
+    let db_path = "db/hits.db";
     if Path::new(db_path).exists() == false {
         println!("Can't find DB, creating new one...");
     }
@@ -108,8 +117,10 @@ fn insert_run_into_db(game_object: &BTreeMap<i32, (String, i32)>, game_name: &St
 
 fn select_pbs_from_run (game_name: &String) -> Vec<u8> {
     let mut hits_vec = Vec::new();
-    let db_path = "src/hits.db";
+    let db_path = "db/hits.db";
     let sql_select_default = "SELECT Boss, PBHits FROM {}";
+
+    // Replace {} with game_name to select correct table
     let sql_select_replace = sql_select_default.replace("{}", game_name);
 
     let conn = Connection::open(db_path).unwrap();
@@ -126,7 +137,6 @@ fn select_pbs_from_run (game_name: &String) -> Vec<u8> {
     
     return hits_vec;
 }
- 
 
 fn main() {
     // Initialize several variables now for scope reasons
@@ -134,7 +144,7 @@ fn main() {
     let object_length: i32;
     let mut input = String::new();
     let mut game_object = BTreeMap::new();
-    let game_name: String;
+    let game_name: String;    
 
     // Loads up games.json, puts data into Game struct
     let list = load_json();
@@ -194,7 +204,7 @@ fn main() {
                                     game_object.insert(counter, (boss.to_string(), hit - 1));
                                 }
                                 // "Save" is used when a user wants to update their PB
-                            } else if loop_input.trim() == "save" {
+                            } else if loop_input.trim() == "save" || loop_input.trim() == "exit" {
                                 let mut index_counter = 0;
                                 for (index, (_, hits)) in &game_object {
                                     let mut hits_u8 = *hits as u8;
@@ -222,5 +232,6 @@ fn main() {
             }
                 
         }
+        
 }
 
