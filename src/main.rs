@@ -28,8 +28,10 @@ struct Hits {
 }
 
 // Display GameSplit object in a nice manner
-fn display_highlighted_split(game_object: &BTreeMap<i32, (String, i32)>, highlight: &i32, name: &String, hits_vec: &Vec<u8>) {
+fn display_highlighted_split(game_object: &BTreeMap<i32, (String, i32)>, highlight: &i32, name: &String, hits_vec: &Vec<u8>, run_created: &bool) {
     let mut table = Table::new();
+    let mut total_points = 0;
+    let mut vec_index_total = 0;
     // Display game name as a header of sorts
     println!("{}", name);
     // Column names
@@ -44,7 +46,14 @@ fn display_highlighted_split(game_object: &BTreeMap<i32, (String, i32)>, highlig
             table.add_row(row![boss, r -> hits, r -> hits_vec[vec_index_counter]]);
         }
 
+        vec_index_total = vec_index_total + hits_vec[vec_index_counter];
+        total_points = total_points + hits;
         vec_index_counter = vec_index_counter + 1;
+    }
+    if total_points as u8 > vec_index_total && run_created == &false {
+        table.add_row(row![bFr -> "Total:", rbFr -> total_points, rbFr -> vec_index_total]);
+    } else {
+        table.add_row(row![bFg -> "Total:", rbFg -> total_points, rbFg -> vec_index_total]);
     }
     table.printstd();
 }
@@ -87,7 +96,8 @@ fn update_pb(game_object: &BTreeMap<i32, (String, i32)>, game_name: &String) {
     conn.close().unwrap();
 }
 
-fn insert_run_into_db(game_object: &BTreeMap<i32, (String, i32)>, game_name: &String) {
+fn insert_run_into_db(game_object: &BTreeMap<i32, (String, i32)>, game_name: &String) -> bool {
+    let mut changes_made = false;
     let db_path = "db/hits.db";
     if Path::new(db_path).exists() == false {
         println!("Can't find DB, creating new one...");
@@ -103,11 +113,16 @@ fn insert_run_into_db(game_object: &BTreeMap<i32, (String, i32)>, game_name: &St
     println!("SQL CREATE: \n{}", sql_create_replace);
 
 
-    conn.execute(&sql_create_replace, &[]).unwrap();
+    conn.execute(&sql_create_replace, &[]).unwrap();    
+    let mut insert_stmt: i32;
     for (_, (boss, hits)) in game_object {
-        conn.execute(&sql_insert_replace, &[boss, hits]).unwrap();
+        insert_stmt = conn.execute(&sql_insert_replace, &[boss, hits]).unwrap();   
+        if insert_stmt > 0 {
+            changes_made = true;
+        }
     }
     conn.close().unwrap();
+    return changes_made;
 }
 
 fn select_pbs_from_run (game_name: &String) -> Vec<u8> {
@@ -133,6 +148,34 @@ fn select_pbs_from_run (game_name: &String) -> Vec<u8> {
     return hits_vec;
 }
 
+fn create_run() -> String {
+    let mut game_map = BTreeMap::new();
+    let mut game_name: String;
+    let mut input = String::new();
+    println!("Name of the game.");
+    stdin().read_line(&mut input).ok().expect("Couldn't read.");
+    game_name = String::from(input.trim());
+
+    let mut counter = 0;    
+     loop {
+        println!("Type name of split #{}, or type 'done' to exit.", counter + 1); 
+        let mut split_input = String::new();
+        stdin().read_line(&mut split_input).ok().expect("Couldn't read.");
+        if split_input.trim() == "done" {
+            break;
+        } else {
+            game_map.insert(counter, (split_input, 0));
+            counter = counter + 1;
+            for (index, (boss, hit)) in game_map.clone() {
+                game_map.insert(index, (String::from(boss.trim()), hit));
+            }
+            println!("{:?}", game_map);
+            }
+        } 
+    println!("{:?}", game_map);
+    return game_name;
+    }
+
 fn main() {
     // Initialize several variables now for scope reasons
     let mut counter = 0;
@@ -148,6 +191,10 @@ fn main() {
 
     // Get user input on what they want to do
     stdin().read_line(&mut input).ok().expect("Couldn't read.");
+
+    if input.trim() == "create" {
+        create_run();
+    }
    // let game = &input.split(" ");
    // Splits up input so the name of the run can be grabbed
     let game_vec: Vec<&str> = (&mut input).split(" ").collect();
@@ -168,7 +215,7 @@ fn main() {
     object_length = game_map_length(&game_object);
     game_name = String::from(game_vec[1]);
         loop {
-            insert_run_into_db(&game_object, &game_name);
+            let run_created = insert_run_into_db(&game_object, &game_name);
             // Set up new input for while loop, ownership issues with previous input
             let mut loop_input = String::new(); 
             let mut hits_vec = Vec::new();
@@ -179,7 +226,7 @@ fn main() {
                 print!("{}[2J", 27 as char); // Clears console window
                 loop_input = String::from("");
                 // Displays the entire run in console, including which run you are on by using the counter variable
-                display_highlighted_split(&game_object, &counter, &game_name, &hits_vec);
+                display_highlighted_split(&game_object, &counter, &game_name, &hits_vec, &run_created);
                 stdin().read_line(&mut loop_input).ok().expect("Couldn't read.");
                 if loop_input.trim() == "add" || loop_input.trim() == "rm" || loop_input.trim() == "save" || loop_input.trim() == "print" || loop_input.trim() == "b" {
                     // cloning the BTreeMap from GameSplit is a temporary fix to ownership compile errors 
