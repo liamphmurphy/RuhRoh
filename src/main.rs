@@ -7,6 +7,7 @@ extern crate rusqlite;
 use prettytable::Table;
 use prettytable::row::Row;
 use prettytable::cell::Cell;
+use prettytable::{Attr, color};
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -16,14 +17,8 @@ use std::path::Path;
 use rusqlite::Connection;
 
 #[derive(Deserialize)]
-struct Game {
+struct Split {
     games: HashMap<String, BTreeMap<i32, (String, i32)>>
-}
-
-#[derive(Deserialize)]
-struct GameSplit {
-    boss_splits: BTreeMap<String, i32>,
-    //boss_splits: BTreeMap<i32, (String, i32)>, // Using BTreeMap because the order of bosses is important and cannot be unordered.
 }
 
 #[derive(Debug)]
@@ -36,17 +31,17 @@ struct Hits {
 fn display_highlighted_split(game_object: &BTreeMap<i32, (String, i32)>, highlight: &i32, name: &String, hits_vec: &Vec<u8>) {
     let mut table = Table::new();
     // Display game name as a header of sorts
-    println!("{}\n_________________________________________\n", name);
+    println!("{}", name);
     // Column names
-    table.add_row(row!["BOSS", "HITS", "PB"]);
+    table.add_row(row![bFg -> "BOSS", bFg -> "HITS", bFg -> "PB"]);
     let mut vec_index_counter = 0;
     for (index, (boss, hits)) in game_object {
         // Display boss name, current hits, and pb 
         if index == highlight {
-            table.add_row(row![boss, hits, hits_vec[vec_index_counter], " <-----"]);
+            table.add_row(row![FB -> boss, rFB -> hits, rFB -> hits_vec[vec_index_counter]]);
             //print!(" );
         } else {
-            table.add_row(row![boss, hits, hits_vec[vec_index_counter]]);
+            table.add_row(row![boss, r -> hits, r -> hits_vec[vec_index_counter]]);
         }
 
         vec_index_counter = vec_index_counter + 1;
@@ -65,11 +60,11 @@ fn game_map_length(game_object: &BTreeMap<i32, (String, i32)>) -> i32 {
     return map_length - 1;
 }
 
-fn load_json() -> Game {
+fn load_json() -> Split {
     let path = Path::new("src/games.json");
     let file = File::open(path).expect("Error opening games.json, have to close program.");
     // Deserialize into Game struct
-    let deserialize_game: Game = serde_json::from_reader(file).unwrap();
+    let deserialize_game: Split = serde_json::from_reader(file).unwrap();
     return deserialize_game;
 }
 
