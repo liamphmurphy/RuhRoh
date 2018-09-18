@@ -87,19 +87,22 @@ fn load_json() -> Split {
     return deserialize_game;
 }
 
+// To help reduce lines of code / clutter, this fn takes in a statement string with {} and replaces it with new value.
+fn replace_stmt(default: &str, new: &str, characters: &str) -> String {
+    let new_stmt = default.replace(characters, new);
+    return new_stmt;
+}
+
 fn update_pb(game_object: &BTreeMap<i32, (String, i32)>, game_name: &String) {
     if Path::new(DB_PATH).exists() == false {
         println!("Can't find DB, creating new one...");
     }
     // Set up how the SQL statement looks, use {} where value needs to be replaced
-    let sql_default = "UPDATE {} Set PBHits = ?1 where Boss = ?2";
-
-    // Replace {} in default string with game name, which is the name of the table.
-    let sql_replace = sql_default.replace("{}", &game_name);
+    let sql_update = replace_stmt("UPDATE {} Set PBHits = ?1 where Boss = ?2", &game_name.trim(), "{}");
 
     let conn = Connection::open(DB_PATH).unwrap();
     for (_, (boss, hits)) in game_object {
-        conn.execute(&sql_replace, &[hits, boss]).unwrap();
+        conn.execute(&sql_update, &[hits, boss]).unwrap();
     }
     conn.close().unwrap();
 }
@@ -109,20 +112,16 @@ fn insert_run_into_db(game_object: &BTreeMap<i32, (String, i32)>, game_name: &St
     if Path::new(DB_PATH).exists() == false {
         println!("Can't find DB, creating new one...");
     }
-    // Set up how the SQL statement looks, use {} where value needs to be replaced
-    let sql_insert_default = "INSERT OR IGNORE INTO {} (Boss, PBHits) VALUES (?1, ?2)";
-    let sql_create_default = "CREATE TABLE IF NOT EXISTS {} (Boss TEXT UNIQUE, PBHits NUMERIC);";
+    let sql_insert_change = replace_stmt("INSERT OR IGNORE INTO {} (Boss, PBHits) VALUES (?1, ?2)", &game_name.trim(), "{}");
+    let sql_create_change = replace_stmt("CREATE TABLE IF NOT EXISTS {} (Boss TEXT UNIQUE, PBHits NUMERIC);", &game_name.trim(), "{}");
 
     // Replace {} in default string with game name, which is the name of the table.
-    let sql_insert_replace = sql_insert_default.replace("{}", &game_name.trim());
-    let sql_create_replace = sql_create_default.replace("{}", &game_name.trim());
     let conn = Connection::open(DB_PATH).unwrap();
-    println!("SQL CREATE: \n{}", sql_create_replace);
 
-    conn.execute(&sql_create_replace, &[]).unwrap();
+    conn.execute(&sql_create_change, &[]).unwrap();
     let mut insert_stmt: i32;
     for (_, (boss, hits)) in game_object {
-        insert_stmt = conn.execute(&sql_insert_replace, &[boss, hits]).unwrap();
+        insert_stmt = conn.execute(&sql_insert_change, &[boss, hits]).unwrap();
         if insert_stmt > 0 {
             changes_made = true;
         }
@@ -134,14 +133,11 @@ fn insert_run_into_db(game_object: &BTreeMap<i32, (String, i32)>, game_name: &St
 // Currently, 
 fn select_pbs_from_run(game_name: &String) -> Vec<u8> {
     let mut hits_vec = Vec::new();
-    let sql_select_default = "SELECT Boss, PBHits FROM {}";
-
-    // Replace {} with game_name to select correct table
-    let sql_select_replace = sql_select_default.replace("{}", game_name);
+    let sql_select = replace_stmt("SELECT Boss, PBHits FROM {}", game_name, "{}");
 
     let conn = Connection::open(DB_PATH).unwrap();
 
-    let mut stmt = conn.prepare(&sql_select_replace).unwrap();
+    let mut stmt = conn.prepare(&sql_select).unwrap();
     let hits_iter = stmt
         .query_map(&[], |row| Hits {
             boss: row.get(0),
@@ -166,20 +162,16 @@ fn delete_run_from_db(game_name: &str) {
 }
 
 fn create_run() -> String {
-    let mut game_name: String;
+    let game_name: String;
     let mut input = String::new();
     println!("Name of the game.");
     stdin().read_line(&mut input).ok().expect("Couldn't read.");
     game_name = String::from(input.trim());
-    let sql_insert_default = "INSERT OR IGNORE INTO {} (Boss, PBHits) VALUES (?1, ?2)";
-
-    let sql_create_default = "CREATE TABLE IF NOT EXISTS {} (Boss TEXT UNIQUE, PBHits NUMERIC);";
-    let sql_create_replace = sql_create_default.replace("{}", &game_name.trim());
+    let sql_insert = replace_stmt("INSERT OR IGNORE INTO {} (Boss, PBHits) VALUES (?1, ?2)", &game_name.trim(), "{}");
+    let sql_create = replace_stmt("CREATE TABLE IF NOT EXISTS {} (Boss TEXT UNIQUE, PBHits NUMERIC);", &game_name.trim(), "{}");
 
     let conn = Connection::open(DB_PATH).unwrap();
-    println!("SQL CREATE: \n{}", sql_create_replace);
-
-    conn.execute(&sql_create_replace, &[]).unwrap();
+    conn.execute(&sql_create, &[]).unwrap();
 
     let mut counter = 0;
     loop {
@@ -193,8 +185,7 @@ fn create_run() -> String {
         if split_input.trim() == "done" {
             break;
         } else {
-            let sql_insert_replace = sql_insert_default.replace("{}", &game_name.trim());
-            conn.execute(&sql_insert_replace, &[&split_input, &"0"])
+            conn.execute(&sql_insert, &[&split_input, &"0"])
                 .unwrap();
         }
     }
