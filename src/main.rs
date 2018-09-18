@@ -5,21 +5,23 @@ extern crate rusqlite;
 
 #[macro_use]
 extern crate prettytable;
-use prettytable::cell::Cell;
-use prettytable::row::Row;
 use prettytable::Table;
 use prettytable::{color, Attr};
 
 use rusqlite::Connection;
 use std::collections::BTreeMap;
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{stdin, stdout, Write};
+use std::io;
 use std::path::Path;
 
 #[derive(Deserialize)]
 struct Split {
     games: BTreeMap<String, BTreeMap<i32, (String, i32)>>,
+}
+
+struct DBSelect {
+    boss: String,
 }
 
 #[derive(Debug)]
@@ -56,6 +58,7 @@ fn display_highlighted_split(
         total_points = total_points + hits;
         vec_index_counter = vec_index_counter + 1;
     }
+    // type cast total_points to u8 for comparison to work
     if total_points as u8 > vec_index_total && run_created == &false {
         table.add_row(row![bFr -> "Total:", rbFr -> total_points, rbFr -> vec_index_total]);
     } else {
@@ -85,8 +88,7 @@ fn load_json() -> Split {
 }
 
 fn update_pb(game_object: &BTreeMap<i32, (String, i32)>, game_name: &String) {
-    let db_path = "db/hits.db";
-    if Path::new(db_path).exists() == false {
+    if Path::new(DB_PATH).exists() == false {
         println!("Can't find DB, creating new one...");
     }
     // Set up how the SQL statement looks, use {} where value needs to be replaced
@@ -95,7 +97,7 @@ fn update_pb(game_object: &BTreeMap<i32, (String, i32)>, game_name: &String) {
     // Replace {} in default string with game name, which is the name of the table.
     let sql_replace = sql_default.replace("{}", &game_name);
 
-    let conn = Connection::open(db_path).unwrap();
+    let conn = Connection::open(DB_PATH).unwrap();
     for (_, (boss, hits)) in game_object {
         conn.execute(&sql_replace, &[hits, boss]).unwrap();
     }
@@ -104,8 +106,7 @@ fn update_pb(game_object: &BTreeMap<i32, (String, i32)>, game_name: &String) {
 
 fn insert_run_into_db(game_object: &BTreeMap<i32, (String, i32)>, game_name: &String) -> bool {
     let mut changes_made = false;
-    let db_path = "db/hits.db";
-    if Path::new(db_path).exists() == false {
+    if Path::new(DB_PATH).exists() == false {
         println!("Can't find DB, creating new one...");
     }
     // Set up how the SQL statement looks, use {} where value needs to be replaced
@@ -115,7 +116,7 @@ fn insert_run_into_db(game_object: &BTreeMap<i32, (String, i32)>, game_name: &St
     // Replace {} in default string with game name, which is the name of the table.
     let sql_insert_replace = sql_insert_default.replace("{}", &game_name.trim());
     let sql_create_replace = sql_create_default.replace("{}", &game_name.trim());
-    let conn = Connection::open(db_path).unwrap();
+    let conn = Connection::open(DB_PATH).unwrap();
     println!("SQL CREATE: \n{}", sql_create_replace);
 
     conn.execute(&sql_create_replace, &[]).unwrap();
@@ -130,15 +131,15 @@ fn insert_run_into_db(game_object: &BTreeMap<i32, (String, i32)>, game_name: &St
     return changes_made;
 }
 
+// Currently, 
 fn select_pbs_from_run(game_name: &String) -> Vec<u8> {
     let mut hits_vec = Vec::new();
-    let db_path = "db/hits.db";
     let sql_select_default = "SELECT Boss, PBHits FROM {}";
 
     // Replace {} with game_name to select correct table
     let sql_select_replace = sql_select_default.replace("{}", game_name);
 
-    let conn = Connection::open(db_path).unwrap();
+    let conn = Connection::open(DB_PATH).unwrap();
 
     let mut stmt = conn.prepare(&sql_select_replace).unwrap();
     let hits_iter = stmt
@@ -147,7 +148,6 @@ fn select_pbs_from_run(game_name: &String) -> Vec<u8> {
             hits: row.get(1),
         }).unwrap();
     for result in hits_iter {
-        // println!("Hit: {:?}", hit.unwrap());
         for bosshits in result.into_iter() {
             println!("boss: {}, hits: {}", bosshits.boss, bosshits.hits);
             hits_vec.push(bosshits.hits)
@@ -157,20 +157,34 @@ fn select_pbs_from_run(game_name: &String) -> Vec<u8> {
     return hits_vec;
 }
 
+fn delete_run_from_db(game_name: &str) {
+    let conn = Connection::open(DB_PATH).unwrap();
+    let sql_delete_default = "DROP TABLE {}";
+    let sql_replace = sql_delete_default.replace("{}", game_name);
+
+    conn.execute(&sql_replace, &[]).unwrap();
+}
+
 fn create_run() -> String {
-    let mut game_map = BTreeMap::new();
     let mut game_name: String;
     let mut input = String::new();
     println!("Name of the game.");
     stdin().read_line(&mut input).ok().expect("Couldn't read.");
     game_name = String::from(input.trim());
+    let sql_insert_default = "INSERT OR IGNORE INTO {} (Boss, PBHits) VALUES (?1, ?2)";
+
+    let sql_create_default = "CREATE TABLE IF NOT EXISTS {} (Boss TEXT UNIQUE, PBHits NUMERIC);";
+    let sql_create_replace = sql_create_default.replace("{}", &game_name.trim());
+
+    let conn = Connection::open(DB_PATH).unwrap();
+    println!("SQL CREATE: \n{}", sql_create_replace);
+
+    conn.execute(&sql_create_replace, &[]).unwrap();
 
     let mut counter = 0;
     loop {
-        println!(
-            "Type name of split #{}, or type 'done' to exit.",
-            counter + 1
-        );
+        counter = counter + 1;
+        println!("Type name of split #{}, or type 'done' to exit.", counter);
         let mut split_input = String::new();
         stdin()
             .read_line(&mut split_input)
@@ -179,49 +193,76 @@ fn create_run() -> String {
         if split_input.trim() == "done" {
             break;
         } else {
-            game_map.insert(counter, (split_input, 0));
-            counter = counter + 1;
-            for (index, (boss, hit)) in game_map.clone() {
-                game_map.insert(index, (String::from(boss.trim()), hit));
-            }
-            println!("{:?}", game_map);
+            let sql_insert_replace = sql_insert_default.replace("{}", &game_name.trim());
+            conn.execute(&sql_insert_replace, &[&split_input, &"0"])
+                .unwrap();
         }
     }
-    println!("{:?}", game_map);
     return game_name;
 }
 
-fn main() {
-    // Loads up games.json, puts data into Game struct
-    let mut reset = false;
+const DB_PATH: &str = "db/hits.db";
 
-    'change_object: while reset == false {
+fn main() {
+    'change_object: loop {
+        print!("Enter next command: ");
+        io::Write::flush(&mut io::stdout()).expect("flush failed!");
         // Initialize several variables now for scope reasons
+        let object_length: i32;
         let mut counter = 0;
-        let mut object_length: i32;
         let mut input = String::new();
         let mut game_object = BTreeMap::new();
-        let mut game_name: String;
+        let game_name: String;
+        let mut trimmed_input = String::new();
         let list = load_json();
-        print!("Enter next command: ");
-
         // Get user input on what they want to do
         stdin().read_line(&mut input).ok().expect("Couldn't read.");
-        if input.trim() == "create" {
+        trimmed_input = input.trim().to_string();
+
+        if trimmed_input == "create" {
             create_run();
         }
         // let game = &input.split(" ");
         // Splits up input so the name of the run can be grabbed
         let game_vec: Vec<&str> = (&mut input).split(" ").collect();
 
+        if game_vec[0] == "delete" {
+            if game_vec.len() > 0 {
+                delete_run_from_db(game_vec[1]);
+            }
+        }
+
         // Iterates through each run in games.json, and tries to match the run desired from user to one
-        for (key, value) in list.games {
-            println!("key: {}", key);
-            // If run selected from run is matched to a run from games.json...
-            if game_vec[1].trim() == key {
-                for (index, (boss, hit)) in value {
-                    // ... create a object for that run that includes the index of each boss (order as they appear in game), boss name, and set hits to 0
-                    game_object.insert(index, (boss, hit));
+        let test_key = list.games.contains_key(&trimmed_input);
+
+        // If the run name is in games.json, make game_object from that JSON data...
+        if test_key == true {
+            for (key, value) in list.games {
+                println!("key: {}", key);
+                // If run selected from run is matched to a run from games.json...
+                if game_vec[1].trim() == key {
+                    for (index, (boss, hit)) in value {
+                        // ... create a object for that run that includes the index of each boss (order as they appear in game), boss name, and set hits to 0
+                        game_object.insert(index, (boss, hit));
+                    }
+                }
+            }
+        // ... but if the run is not in games.json, it is probably a custom run in the DB, so use that instead.
+        } else {
+            let stmt = "SELECT * FROM {}";
+            let stmt_replace = stmt.replace("{}", &game_vec[1]); // Replaces the base stmt string with the run name user inputted.
+            let conn = Connection::open(DB_PATH).unwrap();
+
+            let mut query = conn.prepare(&stmt_replace).unwrap();
+            let splits_iter = query
+                .query_map(&[], |row| DBSelect { boss: row.get(0) })
+                .unwrap();
+            // To make sure the order is correct in game_object, make an index counter.
+            let mut index = 0;
+            for result in splits_iter {
+                for bosshits in result.into_iter() {
+                    game_object.insert(index, (bosshits.boss, 0));
+                    index = index + 1; // increment index
                 }
             }
         }
@@ -246,6 +287,8 @@ fn main() {
                 .read_line(&mut loop_input)
                 .ok()
                 .expect("Couldn't read.");
+
+            println!("LOOP INPUT: {}", loop_input.trim());
             if loop_input.trim() == "add"
                 || loop_input.trim() == "rm"
                 || loop_input.trim() == "save"
