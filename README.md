@@ -4,6 +4,12 @@ This tool allows you to use any pre-made runs, create new ones, and delete them.
 
 **This softare is in an early stage.**
 
+# Screenshots
+
+
+![Linux Screenshot](https://i.imgur.com/hfQqgCf.png)
+
+
 ## How to Use
 
 After launching the program, you can start any of the default runs by typing 'run {run name}' when the prompt says 'Enter next command:'. Example: `run ds3allboss`
