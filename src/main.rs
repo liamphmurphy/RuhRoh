@@ -1,26 +1,21 @@
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
-extern crate curl;
 extern crate inputbot;
 extern crate rusqlite;
 
 #[macro_use]
 extern crate prettytable;
 use prettytable::Table;
-use prettytable::{color, Attr};
 
-use curl::easy::Easy;
 use inputbot::*;
 use rusqlite::Connection;
-use splitmod::*;
 use std::collections::BTreeMap;
 use std::fs;
 use std::fs::File;
 use std::io;
-use std::io::{stdin, stdout, Write};
+use std::io::{stdin};
 use std::path::Path;
-use std::process::Command;
 
 #[derive(Deserialize)]
 pub struct Split {
@@ -203,20 +198,15 @@ fn delete_run_from_db(game_name: &str) {
     conn.execute(&sql_replace, &[]).unwrap();
 }
 
-fn create_run() -> String {
-    let game_name: String;
-    let mut input = String::new();
-    println!("Name of the game.");
-    stdin().read_line(&mut input).ok().expect("Couldn't read.");
-    game_name = String::from(input.trim());
+fn create_run(run_name: &str) {
     let sql_insert = replace_stmt(
         "INSERT OR IGNORE INTO {} (Boss, PBHits) VALUES (?1, ?2)",
-        &game_name.trim(),
+        &run_name.trim(),
         "{}",
     );
     let sql_create = replace_stmt(
         "CREATE TABLE IF NOT EXISTS {} (Boss TEXT UNIQUE, PBHits NUMERIC);",
-        &game_name.trim(),
+        &run_name.trim(),
         "{}",
     );
 
@@ -238,7 +228,6 @@ fn create_run() -> String {
             conn.execute(&sql_insert, &[&split_input, &"0"]).unwrap();
         }
     }
-    return game_name;
 }
 
 const DB_PATH: &str = "db/hits.db";
@@ -247,18 +236,18 @@ fn main() {
     if Path::new(DB_PATH).exists() == false {
         println!("Can't find DB, creating new one...");
         let dir = fs::create_dir("db");
-        let dir = match dir {
+        let _dir = match dir {
             Ok(dir) => dir,
-            Err(error) => {
+            Err(_error) => {
                 panic!{"Cannot create missing hits.db in db directory. Exiting."}
             }
         };
 
         let touch = File::create(DB_PATH);
-        let touch = match touch {
+        let _touch = match touch {
             // Handle potential file make errors
             Ok(file) => file,
-            Err(error) => {
+            Err(_error) => {
                 panic!{"Cannot create missing hits.db in db directory. Exiting."}
             }
         };
@@ -274,21 +263,25 @@ fn main() {
         // Get user input on what they want to do
         stdin().read_line(&mut input).ok().expect("Couldn't read.");
 
-        if input.trim() == "create" {
-            create_run();
-        }
         // let game = &input.split(" ");
         // Splits up input so the name of the run can be grabbed
-        let game_vec: Vec<&str> = (&mut input).split(" ").collect();
-        if game_vec.len() == 0 {
+        let input_vec: Vec<&str> = (&mut input).split(" ").collect();
+        if input_vec.len() == 0 {
         } else {
-            if game_vec[0] == "delete" {
-                if game_vec.len() > 0 {
-                    delete_run_from_db(game_vec[1]);
+            if input_vec[0] == "delete" {
+                if input_vec.len() > 0 {
+                    println!("REACHED DELETE");
+                    delete_run_from_db(input_vec[1]);
+                    continue 'change_object;
                 }
             }
         }
-        let game_target = game_vec[1].trim();
+
+        if input_vec[0] == "create" {
+            create_run(input_vec[1]);
+        }
+
+        let game_target = input_vec[1].trim();
 
         // Iterates through each run in games.json, and tries to match the run desired from user to one
         let test_key = list.games.contains_key(game_target);
@@ -307,7 +300,7 @@ fn main() {
 
         // ... but if the run is not in games.json, it is probably a custom run in the DB, so use that instead.
         } else {
-            let stmt_change = replace_stmt("SELECT * FROM {}", &game_vec[1], "{}");
+            let stmt_change = replace_stmt("SELECT * FROM {}", &input_vec[1], "{}");
             let conn = Connection::open(DB_PATH).unwrap();
 
             let mut query = conn.prepare(&stmt_change).unwrap();
