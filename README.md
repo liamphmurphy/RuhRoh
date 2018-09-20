@@ -7,7 +7,7 @@ This tool allows you to use any pre-made runs, create new ones, and delete them.
 # Screenshots
 
 
-![Linux Screenshot](https://i.imgur.com/hfQqgCf.png)
+![Linux Screenshot](https://i.imgur.com/hfQqgCf.png) ![Windows Screenshot](https://i.imgur.com/U2CEfz0.png)
 
 
 ## How to Use

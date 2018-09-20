@@ -1,21 +1,21 @@
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
-extern crate inputbot;
 extern crate rusqlite;
 
 #[macro_use]
 extern crate prettytable;
 use prettytable::Table;
 
-use inputbot::*;
 use rusqlite::Connection;
 use std::collections::BTreeMap;
 use std::fs;
 use std::fs::File;
 use std::io;
-use std::io::{stdin};
+use std::io::stdin;
 use std::path::Path;
+use std::str;
+use std::{thread, time};
 
 #[derive(Deserialize)]
 pub struct Split {
@@ -113,7 +113,7 @@ fn display_highlighted_split(
         table.add_row(row![bFg -> "Total:", rbFg -> total_points, rbFg -> vec_index_total]);
     }
     table.printstd();
-    print!("Type 'r' to exit the run and enter a new one.");
+    println!("Type 'r' to exit the run and enter a new one.");
 }
 
 // This fn returns how many elements are in a games' boss_splits BTreeMap
@@ -133,21 +133,30 @@ fn replace_stmt(default: &str, new: &str, characters: &str) -> String {
     return new_stmt;
 }
 
-fn update_pb(game_object: &BTreeMap<i32, (String, i32)>, game_name: &str) {
-    if Path::new(DB_PATH).exists() == false {
-        println!("Can't find DB, creating new one...");
-    }
+fn update_run(game_object: &BTreeMap<i32, (String, i32)>, game_name: &str, value_change: &str, old_value: String, new_value: &str) {
     // Set up how the SQL statement looks, use {} where value needs to be replaced
-    let sql_update = replace_stmt(
-        "UPDATE {} Set PBHits = ?1 where Boss = ?2",
-        &game_name.trim(),
-        "{}",
-    );
-
+    let sql_update: String;
     let conn = Connection::open(DB_PATH).unwrap();
-    for (_, (boss, hits)) in game_object {
-        conn.execute(&sql_update, &[hits, boss]).unwrap();
+    if value_change == "pb" {
+        sql_update = replace_stmt(
+            "UPDATE {} Set PBHits = ?1 where Boss = ?2",
+            &game_name.trim(),
+            "{}",
+        );
+        for (_, (boss, hits)) in game_object {
+            conn.execute(&sql_update, &[hits, boss]).unwrap();
+        }
+    } else if value_change == "boss" {
+        sql_update = replace_stmt(
+            "UPDATE {} Set Boss = ?1 where Boss = ?2",
+            &game_name.trim(),
+            "{}",
+        );
+        for (_, (boss, _)) in game_object {
+            conn.execute(&sql_update, &[&String::from(new_value), &old_value]).unwrap();
+        }
     }
+
     conn.close().unwrap();
 }
 
@@ -156,7 +165,7 @@ fn save_db(game_object: &BTreeMap<i32, (String, i32)>, game_name: &str, hits_vec
     for (_, (_, hits)) in game_object {
         let mut hits_u8 = *hits as u8;
         if &hits_vec[index_counter] > &hits_u8 {
-            update_pb(&game_object, &game_name);
+            update_run(&game_object, &game_name, "pb", String::from(""), "");
         }
         index_counter = index_counter + 1;
     }
@@ -196,6 +205,23 @@ fn delete_run_from_db(game_name: &str) {
     let sql_replace = sql_delete_default.replace("{}", game_name);
 
     conn.execute(&sql_replace, &[]).unwrap();
+}
+
+fn edit_split(
+    mut game_object: BTreeMap<i32, (String, i32)>,
+    new_name: String,
+    counter: &i32,
+    game_name: String,
+) -> BTreeMap<i32, (String, i32)> {
+    let mut old_boss: String;
+    for (index, (boss, hits)) in game_object.clone() {
+        if &index == counter {
+            old_boss = boss;
+            game_object.insert(index, (new_name.to_string(), hits));
+            update_run(&game_object, &game_name, "boss", old_boss, &new_name);
+        }
+    }
+    return game_object;
 }
 
 fn create_run(run_name: &str) {
@@ -338,33 +364,42 @@ fn main() {
                 &game_target,
                 &hits_vec,
                 &run_created,
-            );
+            ); // I believe all of these args should be borrowed because it doesn't make sense for a func like this to take ownership
             stdin()
                 .read_line(&mut loop_input)
                 .ok()
                 .expect("Couldn't read.");
 
-            if loop_input.trim() == "a"
-                || loop_input.trim() == "add"
-                || loop_input.trim() == "rm"
-                || loop_input.trim() == "save"
-                || loop_input.trim() == "print"
-                || loop_input.trim() == "b"
-                || loop_input.trim() == "r"
+            let mut loop_vec: Vec<&str> = loop_input.trim().split(" ").collect();
+            let mut command = loop_vec[0].trim();
+            /*println!("COMMAND: {}", command);
+            let ten_millis = time::Duration::from_secs(30);
+            let now = time::Instant::now();
+
+            thread::sleep(ten_millis);*/
+
+            if command == "a"
+                || command == "add"
+                || command == "rm"
+                || command == "save"
+                || command == "print"
+                || command == "b"
+                || command == "r"
+                || command == "editname"
             {
                 // cloning the BTreeMap from GameSplit is a temporary fix to ownership compile errors
                 // Note to self for future: apparently this is how higher-language handles this issue!
                 for (k, (boss, hit)) in game_object.clone() {
                     if counter == k {
-                        if loop_input.trim() == "a" || loop_input.trim() == "add" {
+                        if command == "a" || command == "add" {
                             // Increment the total hits of a split by 1
                             game_object.insert(counter, (boss.to_string(), hit + 1));
-                        } else if loop_input.trim() == "rm" {
+                        } else if command == "rm" {
                             // If user types 'rm' when current hits is 0, stop it from happening
                             if hit - 1 < 0 {
                                 println!("Can't make a hit a negative number.");
                                 stdin()
-                                    .read_line(&mut loop_input)
+                                    .read_line(&mut String::from(command))
                                     .ok()
                                     .expect("Couldn't read.");
                             } else {
@@ -372,17 +407,27 @@ fn main() {
                                 game_object.insert(counter, (boss.to_string(), hit - 1));
                             }
                         // "Save" is used when a user wants to update their PB
-                        } else if loop_input.trim() == "save" {
+                        } else if command == "save" {
                             save_db(&game_object, &game_target, &hits_vec)
-                        } else if loop_input.trim() == "print" {
+                        } else if command == "print" {
                             hits_vec = select_pbs_from_run(&game_target, hits_vec);
                         // Go back a split
-                        } else if loop_input.trim() == "b" {
+                        } else if command == "b" {
                             counter = counter - 1;
-                        } else if loop_input.trim() == "r" {
+                        } else if command == "r" {
                             save_db(&game_object, &game_target, &hits_vec);
                             print!("{}[2J", 27 as char); // Clears console window
                             continue 'change_object;
+                        } else if command == "editname" {
+                            let name_len = loop_vec.len();
+                            let name = loop_vec[1..name_len].concat();
+
+                            game_object = edit_split(
+                                game_object.clone(),
+                                name,
+                                &counter,
+                                String::from(game_target),
+                            );
                         }
                     }
                 }
