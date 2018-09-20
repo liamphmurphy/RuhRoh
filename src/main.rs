@@ -13,6 +13,7 @@ use prettytable::{color, Attr};
 use curl::easy::Easy;
 use inputbot::*;
 use rusqlite::Connection;
+use splitmod::*;
 use std::collections::BTreeMap;
 use std::fs;
 use std::fs::File;
@@ -21,9 +22,8 @@ use std::io::{stdin, stdout, Write};
 use std::path::Path;
 use std::process::Command;
 
-
 #[derive(Deserialize)]
-struct Split {
+pub struct Split {
     games: BTreeMap<String, BTreeMap<i32, (String, i32)>>,
 }
 
@@ -35,6 +35,52 @@ struct DBSelect {
 struct Hits {
     boss: String,
     hits: u8,
+}
+
+pub mod splitmod {
+    extern crate serde_json;
+    use std::fs::File;
+    use std::path::Path;
+    use std::process::Command;
+    use Split;
+
+    pub fn load_json() -> Split {
+        let path = Path::new("src/games.json");
+        if Path::new(path).exists() == false {
+            Command::new("wget")
+                .args(&[
+                    "https://raw.githubusercontent.com/murnux/RuhRoh/master/src/games.json",
+                    "-P",
+                    "src",
+                ]).output()
+                .expect("Error running 'wget'.");
+        }
+        let file = File::open(path).expect("Error opening games.json, have to close program.");
+        // Deserialize into Game struct
+        let deserialize_game: Split = serde_json::from_reader(file).unwrap();
+        return deserialize_game;
+    }
+}
+
+fn select_pbs_from_run(game_name: &str, mut hits_vec: Vec<u8>) -> Vec<u8> {
+    let sql_select = replace_stmt("SELECT Boss, PBHits FROM {}", game_name, "{}");
+
+    let conn = Connection::open(DB_PATH).unwrap();
+
+    let mut stmt = conn.prepare(&sql_select).unwrap();
+    let hits_iter = stmt
+        .query_map(&[], |row| Hits {
+            boss: row.get(0),
+            hits: row.get(1),
+        }).unwrap();
+    for result in hits_iter {
+        for bosshits in result.into_iter() {
+            println!("boss: {}, hits: {}", bosshits.boss, bosshits.hits);
+            hits_vec.push(bosshits.hits)
+        }
+    }
+
+    return hits_vec;
 }
 
 // Display GameSplit object in a nice manner
@@ -84,23 +130,6 @@ fn game_map_length(game_object: &BTreeMap<i32, (String, i32)>) -> i32 {
     }
 
     return map_length - 1;
-}
-
-fn load_json() -> Split {
-    let path = Path::new("src/games.json");
-    if Path::new(path).exists() == false {
-        Command::new("wget")
-            .args(&[
-                "https://raw.githubusercontent.com/murnux/RuhRoh/master/src/games.json",
-                "-P",
-                "src",
-            ]).output()
-            .expect("Error running 'wget'.");
-    }
-    let file = File::open(path).expect("Error opening games.json, have to close program.");
-    // Deserialize into Game struct
-    let deserialize_game: Split = serde_json::from_reader(file).unwrap();
-    return deserialize_game;
 }
 
 // To help reduce lines of code / clutter, this fn takes in a statement string with {} and replaces it with new value.
@@ -164,28 +193,6 @@ fn insert_run_into_db(game_object: &BTreeMap<i32, (String, i32)>, game_name: &st
     }
     conn.close().unwrap();
     return changes_made;
-}
-
-fn select_pbs_from_run(game_name: &str) -> Vec<u8> {
-    let mut hits_vec = Vec::new();
-    let sql_select = replace_stmt("SELECT Boss, PBHits FROM {}", game_name, "{}");
-
-    let conn = Connection::open(DB_PATH).unwrap();
-
-    let mut stmt = conn.prepare(&sql_select).unwrap();
-    let hits_iter = stmt
-        .query_map(&[], |row| Hits {
-            boss: row.get(0),
-            hits: row.get(1),
-        }).unwrap();
-    for result in hits_iter {
-        for bosshits in result.into_iter() {
-            println!("boss: {}, hits: {}", bosshits.boss, bosshits.hits);
-            hits_vec.push(bosshits.hits)
-        }
-    }
-
-    return hits_vec;
 }
 
 fn delete_run_from_db(game_name: &str) {
@@ -263,7 +270,7 @@ fn main() {
         let object_length: i32;
         let mut input = String::new();
         let mut game_object = BTreeMap::new();
-        let list = load_json();
+        let list = splitmod::load_json();
         // Get user input on what they want to do
         stdin().read_line(&mut input).ok().expect("Couldn't read.");
 
@@ -324,7 +331,7 @@ fn main() {
         let mut loop_input = String::new();
         let mut hits_vec = Vec::new();
         // Gather any pb's from previous runs
-        hits_vec = select_pbs_from_run(&game_target);
+        hits_vec = select_pbs_from_run(&game_target, hits_vec);
 
         // Stay in while loop until counter is updated from within the loop
         let mut counter = 0;
@@ -375,7 +382,7 @@ fn main() {
                         } else if loop_input.trim() == "save" {
                             save_db(&game_object, &game_target, &hits_vec)
                         } else if loop_input.trim() == "print" {
-                            select_pbs_from_run(&game_target);
+                            hits_vec = select_pbs_from_run(&game_target, hits_vec);
                         // Go back a split
                         } else if loop_input.trim() == "b" {
                             counter = counter - 1;
